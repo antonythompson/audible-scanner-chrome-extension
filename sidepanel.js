@@ -33,6 +33,37 @@ class AudibleScannerSidePanel {
     this.init();
   }
 
+  /**
+   * Ensures content script is loaded on the tab, injecting it if necessary.
+   * Returns the tab if successful, null if not on an Audible page.
+   */
+  async ensureContentScript(tab) {
+    if (!tab?.url || !tab.url.includes('audible.')) {
+      return null;
+    }
+
+    try {
+      // Try to ping the content script
+      await chrome.tabs.sendMessage(tab.id, { action: 'getScanStatus' });
+      return tab;
+    } catch (error) {
+      // Content script not loaded, inject it
+      debug.log('Content script not loaded, injecting...');
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        });
+        // Wait a moment for the script to initialize
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return tab;
+      } catch (injectError) {
+        console.error('Failed to inject content script:', injectError);
+        return null;
+      }
+    }
+  }
+
   async init() {
     // Ensure clean state on init
     this.isScanning = false;
@@ -324,9 +355,11 @@ class AudibleScannerSidePanel {
     stopBtn.disabled = false;
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    debug.log('Active tab:', tab.url);
+    debug.log('Active tab:', tab?.url);
 
-    if (!tab.url || (!tab.url.includes('audible.com') && !tab.url.includes('audible.'))) {
+    // Ensure content script is loaded (inject if needed)
+    const readyTab = await this.ensureContentScript(tab);
+    if (!readyTab) {
       this.updateStatus('Please navigate to your Audible library first', 'error');
       startBtn.disabled = false;
       stopBtn.disabled = true;
@@ -340,9 +373,9 @@ class AudibleScannerSidePanel {
     };
     this.updateStatus(`Starting ${scanTypeLabels[this.settings.scanType] || 'scan'}...`, 'scanning');
 
-    debug.log('Sending startScan message to tab:', tab.id);
+    debug.log('Sending startScan message to tab:', readyTab.id);
     try {
-      await chrome.tabs.sendMessage(tab.id, {
+      await chrome.tabs.sendMessage(readyTab.id, {
         action: 'startScan',
         options: {
           currentPageOnly: this.settings.currentPageOnly,
@@ -379,19 +412,21 @@ class AudibleScannerSidePanel {
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    if (!tab.url || !tab.url.includes('audible.')) {
+    // Ensure content script is loaded (inject if needed)
+    const readyTab = await this.ensureContentScript(tab);
+    if (!readyTab) {
       this.updateStatus('Please navigate to any Audible page first', 'error');
       return;
     }
 
     try {
-      await chrome.tabs.sendMessage(tab.id, { action: 'triggerBackgroundScan' });
+      await chrome.tabs.sendMessage(readyTab.id, { action: 'triggerBackgroundScan' });
       this.updateStatus('Background scan started...', 'scanning');
       this.isScanning = true;
       this.updateUI();
     } catch (error) {
       console.error('Failed to trigger background scan:', error);
-      this.updateStatus('Extension not loaded. Please refresh the Audible page.', 'error');
+      this.updateStatus('Failed to start scan. Please refresh the page.', 'error');
     }
   }
 
