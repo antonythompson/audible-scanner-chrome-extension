@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background circle -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
+    </linearGradient>
+    <linearGradient id="bookGrad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF9900"/>
+      <stop offset="100%" style="stop-color:#FFB347"/>
+    </linearGradient>
+    <linearGradient id="bookGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ECDC4"/>
+      <stop offset="100%" style="stop-color:#7FDBDA"/>
+    </linearGradient>
+    <linearGradient id="bookGrad3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#90EE90"/>
+      <stop offset="100%" style="stop-color:#B8F4B8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <circle cx="64" cy="64" r="60" fill="url(#bgGrad)"/>
+
+  <!-- Book stack -->
+  <!-- Bottom book (orange - Audible color) -->
+  <rect x="28" y="82" width="72" height="16" rx="2" fill="url(#bookGrad1)"/>
+  <rect x="28" y="82" width="6" height="16" rx="1" fill="#E8860D"/>
+
+  <!-- Middle book (teal) -->
+  <rect x="32" y="66" width="64" height="14" rx="2" fill="url(#bookGrad2)"/>
+  <rect x="32" y="66" width="5" height="14" rx="1" fill="#3BA99F"/>
+
+  <!-- Top book (green - matches "new" color) -->
+  <rect x="36" y="52" width="56" height="12" rx="2" fill="url(#bookGrad3)"/>
+  <rect x="36" y="52" width="4" height="12" rx="1" fill="#6BC96B"/>
+
+  <!-- Headphones -->
+  <!-- Headband -->
+  <path d="M 30 58 Q 30 28, 64 28 Q 98 28, 98 58"
+        stroke="white" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- Left ear cup -->
+  <ellipse cx="30" cy="58" rx="10" ry="14" fill="white"/>
+  <ellipse cx="30" cy="58" rx="6" ry="10" fill="#333"/>
+
+  <!-- Right ear cup -->
+  <ellipse cx="98" cy="58" rx="10" ry="14" fill="white"/>
+  <ellipse cx="98" cy="58" rx="6" ry="10" fill="#333"/>
+
+  <!-- Cushion highlights -->
+  <ellipse cx="28" cy="55" rx="2" ry="4" fill="#555"/>
+  <ellipse cx="96" cy="55" rx="2" ry="4" fill="#555"/>
+</svg>
