@@ -65,6 +65,10 @@ class AudibleLibraryScanner {
           totalPages: this.totalPages
         });
         break;
+      case 'triggerBackgroundScan':
+        debug.log('Triggering background scan manually');
+        this.triggerBackgroundScanManually();
+        break;
       default:
         debug.log('Unknown message action:', message.action);
     }
@@ -318,11 +322,16 @@ class AudibleLibraryScanner {
   }
 
   getAllPageUrls() {
-    // Extract all page URLs from the pagination on the current page
+    // Wrapper that uses the current document
+    return this.getAllPageUrlsFromDocument(document);
+  }
+
+  getAllPageUrlsFromDocument(doc) {
+    // Extract all page URLs from the pagination on a document
+    // Used by both main scan (with document) and background scan (with fetched doc)
     const pageUrls = [];
     const seenUrls = new Set();
 
-    // Find all pagination links
     const paginationSelectors = [
       '.pageNumberElement a',
       '.pagingElements a',
@@ -332,11 +341,10 @@ class AudibleLibraryScanner {
     ];
 
     for (const selector of paginationSelectors) {
-      const links = document.querySelectorAll(selector);
+      const links = doc.querySelectorAll(selector);
       links.forEach(link => {
         if (link.href && !seenUrls.has(link.href)) {
           seenUrls.add(link.href);
-          // Extract page number from URL
           const pageMatch = link.href.match(/[?&]page=(\d+)/);
           const pageNum = pageMatch ? parseInt(pageMatch[1]) : null;
           if (pageNum && pageNum > 1) {
@@ -346,8 +354,8 @@ class AudibleLibraryScanner {
       });
     }
 
-    // Also check the next button for additional pages
-    const nextButton = document.querySelector('.nextButton a');
+    // Also check the next button
+    const nextButton = doc.querySelector('.nextButton a');
     if (nextButton && nextButton.href && !seenUrls.has(nextButton.href)) {
       const pageMatch = nextButton.href.match(/[?&]page=(\d+)/);
       const pageNum = pageMatch ? parseInt(pageMatch[1]) : null;
@@ -357,11 +365,11 @@ class AudibleLibraryScanner {
       }
     }
 
-    // Sort by page number and return just the URLs in order
+    // Sort by page number
     pageUrls.sort((a, b) => a.page - b.page);
 
     debug.log(`Found ${pageUrls.length} additional page URLs from pagination`);
-    return pageUrls.map(p => ({ page: p.page, url: p.url }));
+    return pageUrls;
   }
 
   async fetchPage(url) {
@@ -1249,57 +1257,65 @@ class AudibleLibraryScanner {
 
     // Build library URL with pageSize=50 for faster scanning
     const baseUrl = window.location.origin;
-    let currentPage = 1;
-    let hasMorePages = true;
+    const firstPageUrl = `${baseUrl}/library/titles?pageSize=50&page=1`;
 
-    while (hasMorePages && this.isScanning) {
-      const libraryUrl = `${baseUrl}/library/titles?pageSize=50&page=${currentPage}`;
-      debug.log(`Background scan: fetching page ${currentPage}: ${libraryUrl}`);
+    // Fetch first page
+    debug.log(`Background scan: fetching first page: ${firstPageUrl}`);
+    this.sendMessage('scanProgress', {
+      currentPage: 1,
+      status: 'Background scan: page 1...',
+      isBackgroundScan: true
+    });
 
-      // Send progress update (sidepanel will receive if open)
-      this.sendMessage('scanProgress', {
-        currentPage: currentPage,
-        status: `Background scan: page ${currentPage}...`
-      });
+    const firstPageDoc = await this.fetchPage(firstPageUrl);
+    if (!firstPageDoc) {
+      debug.log('Background scan: failed to fetch first page, stopping');
+      return;
+    }
 
-      const pageDoc = await this.fetchPage(libraryUrl);
+    // Extract books from first page
+    const booksFoundBefore = this.scanResults.length;
+    await this.scanPageDocument(firstPageDoc);
+    const booksFoundOnPage = this.scanResults.length - booksFoundBefore;
+    debug.log(`Background scan: page 1 found ${booksFoundOnPage} books (total: ${this.scanResults.length})`);
 
-      if (!pageDoc) {
-        debug.log('Background scan: failed to fetch page, stopping');
+    // Extract all page URLs from the first page's pagination (same approach as main scan)
+    const pageUrls = this.getAllPageUrlsFromDocument(firstPageDoc);
+    const totalPages = pageUrls.length > 0 ? Math.max(...pageUrls.map(p => p.page)) : 1;
+
+    debug.log(`Background scan: found ${pageUrls.length} additional pages, total: ${totalPages}`);
+
+    // Iterate through remaining pages (finite list)
+    for (const pageInfo of pageUrls) {
+      if (!this.isScanning) {
+        debug.log('Background scan: stopped by user');
         break;
       }
 
-      // Extract books from this page
-      const booksFoundBefore = this.scanResults.length;
-      await this.scanPageDocumentSilent(pageDoc);
-      const booksFoundOnPage = this.scanResults.length - booksFoundBefore;
-      debug.log(`Background scan: page ${currentPage} found ${booksFoundOnPage} books (total: ${this.scanResults.length})`);
+      this.sendMessage('scanProgress', {
+        currentPage: pageInfo.page,
+        totalPages: totalPages,
+        status: `Background scan: page ${pageInfo.page}/${totalPages}...`,
+        isBackgroundScan: true
+      });
 
-      // Check for next page
-      const nextButton = pageDoc.querySelector('.nextButton a, .bc-pagination-next a, [data-test-id="pagination-next"] a');
-      if (nextButton) {
-        currentPage++;
-        // Brief pause between pages
-        await this.sleep(300);
+      debug.log(`Background scan: fetching page ${pageInfo.page}: ${pageInfo.url}`);
+      const pageDoc = await this.fetchPage(pageInfo.url);
+
+      if (pageDoc) {
+        const booksFoundBefore = this.scanResults.length;
+        await this.scanPageDocument(pageDoc);
+        const booksFoundOnPage = this.scanResults.length - booksFoundBefore;
+        debug.log(`Background scan: page ${pageInfo.page} found ${booksFoundOnPage} books (total: ${this.scanResults.length})`);
       } else {
-        hasMorePages = false;
+        debug.log(`Background scan: failed to fetch page ${pageInfo.page}, continuing...`);
       }
+
+      // Brief pause between pages
+      await this.sleep(300);
     }
 
     debug.log(`Background scan: library scan complete. Total books: ${this.scanResults.length}`);
-  }
-
-  async scanPageDocumentSilent(doc) {
-    // Extract books from the fetched document (doesn't send messages to sidepanel)
-    const books = this.extractBooksFromDocument(doc);
-
-    for (const book of books) {
-      if (!this.scannedBooks.has(book.id)) {
-        this.scannedBooks.add(book.id);
-        this.scanResults.push(book);
-        // Don't send bookFound message for background scans
-      }
-    }
   }
 
   async checkBackgroundScan() {
@@ -1330,6 +1346,14 @@ class AudibleLibraryScanner {
     }
   }
 
+  async triggerBackgroundScanManually() {
+    // Manual trigger bypasses the 24-hour check
+    const data = await chrome.storage.local.get(['settings']);
+    const settings = data.settings || {};
+    debug.log('Manual background scan triggered');
+    await this.runBackgroundScan(settings);
+  }
+
   async runBackgroundScan(settings) {
     if (this.isScanning) {
       debug.log('Background scan: already scanning');
@@ -1357,7 +1381,9 @@ class AudibleLibraryScanner {
 
       // Scan series for new books if full scan
       if (this.scanOptions.scanType === 'full' || this.scanOptions.scanType === 'series') {
-        await this.scanAllSeriesForNewBooks();
+        if (this.scanResults.length > 0) {
+          await this.scanSeriesForNewBooks();
+        }
       }
 
       // Save results

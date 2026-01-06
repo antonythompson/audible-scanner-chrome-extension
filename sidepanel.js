@@ -113,6 +113,10 @@ class AudibleScannerSidePanel {
       analytics.trackSettingChanged('backgroundScan', e.target.checked);
     });
 
+    document.getElementById('triggerBackgroundScan').addEventListener('click', async () => {
+      await this.triggerBackgroundScan();
+    });
+
     document.getElementById('settingDefaultSort').addEventListener('change', (e) => {
       this.settings.defaultSort = e.target.value;
       this.saveSettings();
@@ -367,6 +371,27 @@ class AudibleScannerSidePanel {
       startBtn.disabled = false;
       stopBtn.disabled = true;
       this.updateUI();
+    }
+  }
+
+  async triggerBackgroundScan() {
+    debug.log('Triggering background scan manually');
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab.url || !tab.url.includes('audible.')) {
+      this.updateStatus('Please navigate to any Audible page first', 'error');
+      return;
+    }
+
+    try {
+      await chrome.tabs.sendMessage(tab.id, { action: 'triggerBackgroundScan' });
+      this.updateStatus('Background scan started...', 'scanning');
+      this.isScanning = true;
+      this.updateUI();
+    } catch (error) {
+      console.error('Failed to trigger background scan:', error);
+      this.updateStatus('Extension not loaded. Please refresh the Audible page.', 'error');
     }
   }
 

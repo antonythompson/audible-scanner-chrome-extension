@@ -124,6 +124,10 @@ audible-scanner/
 └── README.md
 ```
 
+## Disclaimer
+
+This extension is provided "as is" without warranty of any kind. The authors take no responsibility for any consequences arising from the use of this extension, including but not limited to account issues, data loss, or any other damages. Use at your own risk.
+
 ## License
 
 MIT License
